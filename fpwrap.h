@@ -59,11 +59,11 @@ public:
             gzbuffer(ptr_, newsz);
         }
     }
-    void seek(size_t pos) {
+    void seek(size_t pos, int mode=SEEK_SET) {
         if constexpr(is_gz())
-            gzseek(ptr_, pos);
+            gzseek(ptr_, pos, mode);
         else
-            std::fseek(ptr_, pos, SEEK_SET);
+            std::fseek(ptr_, pos, mode);
     }
     void close() {
         if constexpr(is_gz())
