@@ -51,6 +51,12 @@ public:
         else
             return std::fread(ptr, 1, nb, ptr_);
     }
+    auto bulk_read(void *ptr, size_t nb) {
+        if constexpr(is_gz())
+            return gzread(ptr_, ptr, nb);
+        else
+            return ::read(::fileno(ptr_), ptr, nb);
+    }
     auto resize_buffer(size_t newsz) {
         if constexpr(!is_gz()) {
             buf_.resize(newsz);
