@@ -18,6 +18,34 @@
 namespace fp {
 
 template<typename PointerType>
+std::uint64_t get_fsz(const char *path);
+
+// Returns UINT64_MAX on failure, the filesize otherwise.
+
+template<> std::uint64_t get_fsz<std::FILE *>(const char *path) {
+    if(auto p = std::fopen(path, "rb"); p) {
+        struct stat fs;
+        ::fstat(::fileno(p), &fs);
+        return fs.st_size;
+    }
+    return -1;
+}
+
+template<> std::uint64_t get_fsz<gzFile>(const char *path) {
+    if(auto p = gzopen(path, "rb"); p) {
+        size_t tot_read = 0;
+        ssize_t i;
+        char buf[1 << 15];
+        while((i = gzread(p, buf, sizeof(buf))) == sizeof(buf))
+            tot_read += sizeof(buf);
+        if(i < 0) std::fprintf(stderr, "Warning: Error code %d when reading from gzFile\n", i);
+        else tot_read += i;
+        return tot_read;
+    }
+    return -1;
+}
+
+template<typename PointerType>
 class FpWrapper {
     PointerType ptr_;
     std::vector<char> buf_;
