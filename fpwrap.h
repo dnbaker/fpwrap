@@ -18,20 +18,21 @@
 namespace fp {
 
 template<typename PointerType>
-std::uint64_t get_fsz(const char *path);
+inline std::uint64_t get_fsz(const char *path);
 
 // Returns UINT64_MAX on failure, the filesize otherwise.
 
-template<> std::uint64_t get_fsz<std::FILE *>(const char *path) {
+template<> inline std::uint64_t get_fsz<std::FILE *>(const char *path) {
     if(auto p = std::fopen(path, "rb"); p) {
         struct stat fs;
         ::fstat(::fileno(p), &fs);
+        std::fclose(p);
         return fs.st_size;
     }
     return -1;
 }
 
-template<> std::uint64_t get_fsz<gzFile>(const char *path) {
+template<> inline std::uint64_t get_fsz<gzFile>(const char *path) {
     if(auto p = gzopen(path, "rb"); p) {
         size_t tot_read = 0;
         ssize_t i;
@@ -40,6 +41,7 @@ template<> std::uint64_t get_fsz<gzFile>(const char *path) {
             tot_read += sizeof(buf);
         if(i < 0) std::fprintf(stderr, "Warning: Error code %d when reading from gzFile\n", i);
         else tot_read += i;
+        gzclose(p);
         return tot_read;
     }
     return -1;
@@ -53,7 +55,8 @@ class FpWrapper {
 public:
     using type = PointerType;
     FpWrapper(type ptr=nullptr): ptr_(ptr), buf_(BUFSIZ) {}
-    FpWrapper(const char *p, const char *m): ptr_(nullptr), buf_(BUFSIZ) {
+    FpWrapper(const std::string &s, const char *m="r"): FpWrapper(s.data(), m) {}
+    FpWrapper(const char *p, const char *m="r"): ptr_(nullptr), buf_(BUFSIZ) {
         this->open(p, m);
     }
     const std::string &path() const {return path_;}
@@ -126,7 +129,16 @@ public:
                 return std::fputs(val, ptr_);
         } else return this->write(&val, sizeof(val));
     }
-    void open(const char *path, const char *mode) {
+    void open(const std::string &s, const char *mode="rb") {
+        open(s.data(), mode);
+    }
+    int getc() {
+        if constexpr(is_gz())
+            return gzgetc(ptr_);
+        else
+            return std::fgetc(ptr_);
+    }
+    void open(const char *path, const char *mode="rb") {
         if(ptr_) close();
         if constexpr(is_gz()) {
             ptr_ = gzopen(path, mode);
@@ -145,7 +157,7 @@ public:
         if constexpr(is_gz())
             return gzeof(ptr_);
         else
-            std::feof(ptr_);
+            return std::feof(ptr_);
     }
     auto tell() const {
         if constexpr(is_gz()) return gztell(ptr_);
