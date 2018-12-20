@@ -108,7 +108,7 @@ public:
         else
             fclose(ptr_);
         ptr_ = nullptr;
-#if !NDEBUG
+#if VERBOSE_AF
         std::fprintf(stderr, "Closed file at %s\n", path_.data());
 #endif
         path_.clear();
@@ -148,7 +148,7 @@ public:
         if(ptr_ == nullptr)
             throw std::runtime_error(std::string("Could not open file at ") + path + " with mode" + mode);
         if(path) path_ = path;
-#if !NDEBUG
+#if VERBOSE_AF
         std::fprintf(stderr, "Opened file at path %s with mode '%s'\n", path, mode);
 #endif
     }
@@ -166,6 +166,8 @@ public:
     ~FpWrapper() {
         if(ptr_) close();
     }
+    auto       ptr()       {return ptr_;}
+    const auto ptr() const {return ptr_;}
 }; // FpWrapper
 
 } // namespace util
