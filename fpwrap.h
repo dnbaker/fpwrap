@@ -152,6 +152,20 @@ public:
         std::fprintf(stderr, "Opened file at path %s with mode '%s'\n", path, mode);
 #endif
     }
+    int vfprintf(const char *fmt, va_list ap) {
+        if constexpr(is_gz())
+            return gzvprintf(ptr_, fmt, ap);
+        else
+            return std::vfprintf(ptr_, fmt, ap);
+    }
+    int fprintf(const char *fmt, ...) {
+        va_list va;
+        int ret;
+        va_start(va, fmt);
+        ret = this->vfprintf(fmt, va);
+        va_end(va);
+        return ret;
+    }
     bool is_open() const {return ptr_ != nullptr;}
     auto eof() const {
         if constexpr(is_gz())
