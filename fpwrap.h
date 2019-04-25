@@ -13,6 +13,14 @@
 #include <vector>
 #include <sys/stat.h>
 
+#ifndef CONST_IF
+#  if __cpp_if_constexpr
+#    define CONST_IF(x) if constexpr(x)
+#  else
+#    define CONST_IF(x) if(x)
+#  endif
+#endif
+
 // This could certainly be extended to other compression/reading schemes, but it's not bad for now.
 
 namespace fp {
@@ -61,15 +69,15 @@ public:
     }
     const std::string &path() const {return path_;}
     static constexpr bool is_gz() {
-        return std::is_same_v<PointerType, gzFile>;
+        return std::is_same<PointerType, gzFile>::value;
     }
     static constexpr bool maybe_seekable() {
-        return !std::is_same_v<PointerType, gzFile>;
+        return !std::is_same<PointerType, gzFile>::value;
     }
     bool seekable() const {
-        if constexpr(is_gz()) return false;
+        CONST_IF(is_gz()) return false;
         struct stat s;
-        ::fstat(::fileno(ptr_), &s);
+        ::fstat(::fileno(as_fp()), &s);
         return !S_ISFIFO(s.st_mode);
     }
     template<typename T>
@@ -77,36 +85,36 @@ public:
         return this->read(std::addressof(val), sizeof(T));
     }
     auto read(void *ptr, size_t nb) {
-        if constexpr(is_gz())
-            return gzread(ptr_, ptr, nb);
+        CONST_IF(is_gz())
+            return gzread(as_gz(), ptr, nb);
         else
-            return std::fread(ptr, 1, nb, ptr_);
+            return std::fread(ptr, 1, nb, as_fp());
     }
     auto bulk_read(void *ptr, size_t nb) {
-        if constexpr(is_gz())
-            return gzread(ptr_, ptr, nb);
+        CONST_IF(is_gz())
+            return gzread(as_gz(), ptr, nb);
         else
-            return ::read(::fileno(ptr_), ptr, nb);
+            return ::read(::fileno(as_fp()), ptr, nb);
     }
     auto resize_buffer(size_t newsz) {
-        if constexpr(!is_gz()) {
+        CONST_IF(!is_gz()) {
             buf_.resize(newsz);
-            std::setvbuf(ptr_, buf_.data(), buf_.size());
+            std::setvbuf(as_fp(), buf_.data(), buf_.size());
         } else {
-            gzbuffer(ptr_, newsz);
+            gzbuffer(as_gz(), newsz);
         }
     }
     void seek(size_t pos, int mode=SEEK_SET) {
-        if constexpr(is_gz())
-            gzseek(ptr_, pos, mode);
+        CONST_IF(is_gz())
+            gzseek(as_gz(), pos, mode);
         else
-            std::fseek(ptr_, pos, mode);
+            std::fseek(as_fp(), pos, mode);
     }
     void close() {
-        if constexpr(is_gz())
-            gzclose(ptr_);
+        CONST_IF(is_gz())
+            gzclose(as_gz());
         else
-            fclose(ptr_);
+            fclose(as_fp());
         ptr_ = nullptr;
 #if VERBOSE_AF
         std::fprintf(stderr, "Closed file at %s\n", path_.data());
@@ -115,35 +123,36 @@ public:
     }
     auto write(const char *s) {return write(s, std::strlen(s));}
     auto write(const void *buf, size_t nelem) {
-        if constexpr(is_gz())
-            return gzwrite(ptr_, buf, nelem);
+        CONST_IF(is_gz())
+            return gzwrite(as_gz(), buf, nelem);
         else
-            return std::fwrite(buf, 1, nelem, ptr_);
+            return std::fwrite(buf, 1, nelem, as_fp());
     }
     template<typename T>
     auto write(T val) {
-        if constexpr(std::is_same_v<std::decay_t<T>, char *>) {
-            if constexpr(is_gz())
-                return gzputs(ptr_, val);
+        static constexpr bool is_char_p = std::is_same<std::decay_t<T>, char *>::value;
+        CONST_IF(is_char_p) {
+            CONST_IF(is_gz())
+                return gzputs(as_gz(), val);
             else
-                return std::fputs(val, ptr_);
+                return std::fputs(val, as_fp());
         } else return this->write(&val, sizeof(val));
     }
     void open(const std::string &s, const char *mode="rb") {
         open(s.data(), mode);
     }
     int getc() {
-        if constexpr(is_gz())
-            return gzgetc(ptr_);
+        CONST_IF(is_gz())
+            return gzgetc(as_gz());
         else
-            return std::fgetc(ptr_);
+            return std::fgetc(as_fp());
     }
     void open(const char *path, const char *mode="rb") {
         if(ptr_) close();
-        if constexpr(is_gz()) {
-            ptr_ = gzopen(path, mode);
+        CONST_IF(is_gz()) {
+            ptr_ = reinterpret_cast<PointerType>(gzopen(path, mode));
         } else {
-            ptr_ = fopen(path, mode);
+            ptr_ = reinterpret_cast<PointerType>(fopen(path, mode));
         }
         if(ptr_ == nullptr)
             throw std::runtime_error(std::string("Could not open file at ") + path + " with mode" + mode);
@@ -152,11 +161,13 @@ public:
         std::fprintf(stderr, "Opened file at path %s with mode '%s'\n", path, mode);
 #endif
     }
+    gzFile     as_gz() {return reinterpret_cast<gzFile>(ptr_);}
+    std::FILE *as_fp() {return reinterpret_cast<std::FILE *>(ptr_);}
     int vfprintf(const char *fmt, va_list ap) {
-        if constexpr(is_gz())
-            return gzvprintf(ptr_, fmt, ap);
+        CONST_IF(is_gz())
+            return gzvprintf(as_gz(), fmt, ap);
         else
-            return std::vfprintf(ptr_, fmt, ap);
+            return std::vfprintf(as_fp(), fmt, ap);
     }
     int fprintf(const char *fmt, ...) {
         va_list va;
@@ -168,14 +179,14 @@ public:
     }
     bool is_open() const {return ptr_ != nullptr;}
     auto eof() const {
-        if constexpr(is_gz())
-            return gzeof(ptr_);
+        CONST_IF(is_gz())
+            return gzeof(as_gz());
         else
-            return std::feof(ptr_);
+            return std::feof(as_fp());
     }
     auto tell() const {
-        if constexpr(is_gz()) return gztell(ptr_);
-        else                  return std::ftell(ptr_);
+        CONST_IF(is_gz()) return gztell(as_gz());
+        else              return std::ftell(as_fp());
     }
     ~FpWrapper() {
         if(ptr_) close();
