@@ -47,7 +47,7 @@ template<> inline std::uint64_t get_fsz<gzFile>(const char *path) {
         char buf[1 << 15];
         while((i = gzread(p, buf, sizeof(buf))) == sizeof(buf))
             tot_read += sizeof(buf);
-        if(i < 0) std::fprintf(stderr, "Warning: Error code %d when reading from gzFile\n", i);
+        if(i < 0) std::fprintf(stderr, "Warning: Error code %ld when reading from gzFile\n", (long int)i);
         else tot_read += i;
         gzclose(p);
         return tot_read;
